@@ -1,0 +1,33 @@
+# managed by wezterm-omarchy
+#
+# WezTerm's own desktop entry declares none of the X-TerminalArg* keys, so
+# xdg-terminal-exec has no way to pass its arguments and silently drops
+# --app-id. That matters beyond cosmetics: Omarchy tags windows whose class is
+# org.omarchy.terminal as floating, centred and 875x600, and it launches the
+# package installer, btop, disk usage and the other TUIs that way. Without these
+# keys that class never gets set and those windows come up as ordinary tiled
+# windows.
+#
+# Checked with: xdg-terminal-exec --print-cmd --app-id=org.omarchy.terminal -e true
+#   without the keys:  wezterm start --cwd . -e true
+#   with them:         wezterm start --cwd . --class=org.omarchy.terminal -e true
+#
+# WezTerm has --class and --cwd, and accepts -e as an alias for the command
+# separator. It has no --title equivalent for `start`, so that one is left
+# unmapped rather than invented.
+
+[Desktop Entry]
+Name=WezTerm
+Comment=Wez's Terminal Emulator
+Keywords=shell;prompt;command;commandline;cmd;
+Icon=org.wezfurlong.wezterm
+StartupWMClass=org.wezfurlong.wezterm
+TryExec=wezterm
+Exec=wezterm start --cwd .
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Terminal=false
+
+X-TerminalArgExec=-e
+X-TerminalArgAppId=--class=
+X-TerminalArgDir=--cwd=
