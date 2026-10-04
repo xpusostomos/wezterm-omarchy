@@ -285,6 +285,37 @@ regenerate_theme_if_needed() {
   fi
 }
 
+# The old install script's config is recognisable by the path it reads, which is
+# the bug: Omarchy writes generated themes to ~/.local/state, never to
+# ~/.config/omarchy/current. Identifying it lets us migrate it rather than making
+# the user pass FORCE=1 to replace a config we can tell is broken.
+is_old_script_config() {
+  local target="$1"
+  [[ -f $target ]] || return 1
+  is_managed "$target" && return 1
+  grep -qF '/.config/omarchy/current/theme/wezterm.lua' "$target"
+}
+
+# Install the WezTerm config itself, with the old-script migration applied.
+#
+# wezterm.lua is a shared dependency: the font lives in it, so does the
+# appearance, so does the list of modules loaded. A feature target that installed
+# only its own extra files would appear to do nothing whenever the config had
+# changed -- which is exactly what happened with the font. So every target whose
+# feature depends on the config installs it.
+install_wezterm_config() { # $1 = destination
+  local dst="$1" replace=""
+
+  if is_old_script_config "$dst"; then
+    warn "the existing $dst is the old install script's config"
+    note "it reads a theme path Omarchy never writes, which is why WezTerm was not themed"
+    note "replacing it; the original is kept as a .bak copy"
+    replace=replace
+  fi
+
+  install_file "$FILES/wezterm.lua" "$dst" 644 "$replace"
+}
+
 # --- leftovers from the old gist installer -------------------------------
 
 # The widely copied install script wrote these. Nothing reads them: the theme

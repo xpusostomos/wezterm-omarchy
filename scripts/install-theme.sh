@@ -20,19 +20,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 parse_scope_args "$@"
 
 template_src="$FILES/wezterm.lua.tpl"
-config_src="$FILES/wezterm.lua"
 hook_src="$FILES/theme-set.d/wezterm"
-
-# The old install script's config is recognisable by the path it reads, which is
-# the bug: Omarchy writes generated themes to ~/.local/state, never to
-# ~/.config/omarchy/current. Identifying it lets us migrate it rather than making
-# the user pass FORCE=1 to replace a config we can tell is broken.
-is_old_script_config() {
-  local target="$1"
-  [[ -f $target ]] || return 1
-  is_managed "$target" && return 1
-  grep -qF '/.config/omarchy/current/theme/wezterm.lua' "$target"
-}
 
 if [[ $SCOPE == local ]]; then
   if [[ $HOOK_ONLY == 1 ]]; then
@@ -43,20 +31,12 @@ if [[ $SCOPE == local ]]; then
   else
     say "installing the WezTerm theme template and config (user)"
 
-    config_replace=""
-    if is_old_script_config "$(user_wezterm_dir)/wezterm.lua"; then
-      warn "the existing $(user_wezterm_dir)/wezterm.lua is the old install script's config"
-      note "it reads a theme path Omarchy never writes, which is why WezTerm was not themed"
-      note "replacing it; the original is kept as a .bak copy"
-      config_replace=replace
-    fi
-
+    INSTALL_CHANGED=0
     # Omarchy reads user templates from ~/.config/omarchy/themed, and checks them
     # before the built-in ones. Like all per-user config, this survives Omarchy
     # updates, unlike anything written under /usr/share/omarchy.
-    INSTALL_CHANGED=0
     install_file "$template_src" "$HOME/.config/omarchy/themed/wezterm.lua.tpl"
-    install_file "$config_src" "$(user_wezterm_dir)/wezterm.lua" 644 "$config_replace"
+    install_wezterm_config "$(user_wezterm_dir)/wezterm.lua"
     theme_sources_changed=$INSTALL_CHANGED
   fi
 
@@ -83,7 +63,7 @@ else
 
   # Ship the config as an Omarchy user-config source too, so
   # `omarchy refresh-config wezterm/wezterm.lua` can restore it.
-  install_file "$config_src" "$PREFIX/config/wezterm/wezterm.lua"
+  install_file "$FILES/wezterm.lua" "$PREFIX/config/wezterm/wezterm.lua"
 
   # Generate this user's colours now rather than at the next theme change, so the
   # install has a visible effect without waiting for one.

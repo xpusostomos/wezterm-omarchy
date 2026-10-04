@@ -122,6 +122,22 @@ LUA
     pass "no 'could not load theme' errors"
   fi
 
+  # --- is the installed config actually the one in this repo? -------------
+  #
+  # Editing files/wezterm.lua and then running a target that does not install it
+  # leaves the old config in place and nothing says so -- the edit just appears
+  # to do nothing. Only checked when the installed file is ours: the file invites
+  # you to edit it in place, and then a difference is expected, not a fault.
+  if is_managed "$config_file"; then
+    if cmp -s "$REPO/files/wezterm.lua" "$config_file"; then
+      pass "installed config matches files/wezterm.lua"
+    else
+      warn "the installed config differs from $REPO/files/wezterm.lua"
+      note "if you edited the installed copy, that is expected and fine"
+      note "if you edited the repo copy, install it with: make install-theme-local"
+    fi
+  fi
+
   # --- the recursion guard ----------------------------------------------
   #
   # With a system-wide install the config is both the entry point and a valid

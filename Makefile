@@ -65,17 +65,17 @@ install-all-global: ## Install every feature system-wide (needs root)
 # ---------------------------------------------------------------------------
 
 .PHONY: install-theme-local install-theme-global
-install-theme-local: ## Theme colours + auto-reload, for this user
+install-theme-local: ## The config + theme template + reload hook, for this user
 	@$(SCRIPTS)/install-theme.sh --local
 
 install-theme-global: ## Theme template for every user on the machine
 	@$(SCRIPTS)/install-theme.sh --global
 
 .PHONY: install-font-local install-font-global
-install-font-local: ## Follow `omarchy font set`, for this user
+install-font-local: ## Font config + hook, following `omarchy font set`
 	@$(SCRIPTS)/install-font.sh --local
 
-install-font-global: ## Seed the font hook for new users
+install-font-global: ## Font support system-wide + seed new accounts
 	@$(SCRIPTS)/install-font.sh --global
 
 .PHONY: install-terminal-local install-terminal-global

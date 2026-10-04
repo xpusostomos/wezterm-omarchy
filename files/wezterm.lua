@@ -55,9 +55,10 @@ if ran and success and type(stdout) == "string" then
   wanted_family = stdout:gsub("^%s+", ""):gsub("%s+$", "")
 end
 if wanted_family ~= "" then
-  config.font = wezterm.font(wanted_family)
+	config.font = wezterm.font(	wanted_family )
 end
-
+-- Suppress missing glyph warning popups
+config.warn_about_missing_glyphs = false
 config.font_size = 9 -- matches Omarchy's own Alacritty default
 
 --------------------------------------------------------------------------------

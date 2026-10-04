@@ -127,6 +127,22 @@ run uninstall.sh --local >/dev/null 2>&1
 [[ -e $SB/home/.config/wezterm/omarchy-tabs-hidden.lua ]] \
   && fail "tab-bar add-on not removed" || pass "tab-bar add-on removed"
 
+# The font target has to install the config, because the font lives in it. It
+# used to install only the hook, so editing wezterm.lua and running it did
+# nothing whatsoever.
+run install-all.sh --local >/dev/null 2>&1
+printf -- '-- managed by wezterm-omarchy\nlocal w=require("wezterm")\nreturn w.config_builder() -- STALE\n' \
+  >"$SB/home/.config/wezterm/wezterm.lua"
+run install-font.sh --local >/dev/null 2>&1
+cmp -s "$REPO/files/wezterm.lua" "$SB/home/.config/wezterm/wezterm.lua" \
+  && pass "install-font-local installs wezterm.lua, not just the hook" \
+  || fail "install-font-local left a stale config in place"
+
+run install-tabs.sh --local >/dev/null 2>&1
+cmp -s "$REPO/files/wezterm.lua" "$SB/home/.config/wezterm/wezterm.lua" \
+  && pass "install-tabs-local installs the config too" \
+  || fail "install-tabs-local left a stale config in place"
+
 # ===========================================================================
 section "a config we did not write"
 # ===========================================================================

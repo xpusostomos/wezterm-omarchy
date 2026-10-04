@@ -51,7 +51,7 @@ else
       say "also installing the per-user pieces for $invoker"
       note "run as $invoker rather than root, since sudo puts \$HOME at /root"
       run sudo -u "$invoker" -H bash "$here/install-theme.sh" --local --hook-only
-      run sudo -u "$invoker" -H bash "$here/install-font.sh" --local
+      run sudo -u "$invoker" -H bash "$here/install-font.sh" --local --hook-only
       run sudo -u "$invoker" -H bash "$here/install-terminal.sh" --local
     elif is_root; then
       warn "running as root, so there is no account to install the per-user pieces for"
@@ -60,7 +60,7 @@ else
       say "also installing the per-user pieces for $USER"
       note "your own ~/.config/wezterm/wezterm.lua is left exactly as it is"
       bash "$here/install-theme.sh" --local --hook-only
-      bash "$here/install-font.sh" --local
+      bash "$here/install-font.sh" --local --hook-only
       bash "$here/install-terminal.sh" --local
     fi
   fi
