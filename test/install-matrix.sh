@@ -76,7 +76,11 @@ section() { printf '\n%s%s%s\n' "$BOLD" "$*" "$OFF"; }
 
 # Run one of our scripts against the throwaway tree.
 run() {
-  env -u XDG_STATE_HOME -u XDG_CONFIG_HOME \
+  # Every XDG_* that a path helper consults has to be cleared, or the caller's
+  # environment can point a write back into the real home: XDG_DATA_HOME set in
+  # a session is exactly how this test once wrote a desktop entry into the actual
+  # ~/.local/share/applications.
+  env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
     PATH="$SB/shim:$PATH" HOME="$SB/home" REPO="$REPO" \
     PREFIX="$SB/prefix" SKEL="$SB/skel" ETC="$SB/etc" ENVIRONMENT_D="$SB/envd" \
     bash "$REPO/scripts/$1" "${@:2}"
@@ -87,6 +91,27 @@ snapshot() {
     | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum | cut -c1-16
 }
 count_baks() { find "$SB" -name '*.bak.*' 2>/dev/null | wc -l; }
+
+# Guard against the sandbox leaking into the real account. The installers all run
+# with a redirected HOME, but an inherited XDG_* variable can point a path back
+# at the real home -- which is how this suite once wrote a desktop entry into the
+# actual ~/.local/share/applications. Compare hashes of the files we could touch
+# before and after, and shout if any changed.
+REAL_HOME="$HOME"
+real_files=(
+  "$REAL_HOME/.config/wezterm/wezterm.lua"
+  "$REAL_HOME/.config/wezterm/omarchy-tabs-hidden.lua"
+  "$REAL_HOME/.config/xdg-terminals.list"
+  "$REAL_HOME/.local/share/applications/org.wezfurlong.wezterm.desktop"
+  "$REAL_HOME/.config/omarchy/hooks/theme-set.d/wezterm"
+)
+real_state() {
+  local p
+  for p in "${real_files[@]}"; do
+    if [[ -e $p ]]; then sha256sum "$p"; else echo "absent $p"; fi
+  done | sha256sum | cut -c1-16
+}
+real_before="$(real_state)"
 
 user_config="$SB/home/.config/wezterm/wezterm.lua"
 write_user_config() {
@@ -142,6 +167,26 @@ run install-tabs.sh --local >/dev/null 2>&1
 cmp -s "$REPO/files/wezterm.lua" "$SB/home/.config/wezterm/wezterm.lua" \
   && pass "install-tabs-local installs the config too" \
   || fail "install-tabs-local left a stale config in place"
+
+# The desktop entry is what lets xdg-terminal-exec pass --app-id through, which
+# is what gives Omarchy's TUI launchers (the package installer, btop, disk
+# usage) the class they are floated by. Without it they come up as tiled windows.
+if command -v xdg-terminal-exec >/dev/null 2>&1; then
+  entry="$SB/home/.local/share/applications/org.wezfurlong.wezterm.desktop"
+  if [[ -f $entry ]] && grep -q '^X-TerminalArgAppId=' "$entry"; then
+    pass "desktop entry installed with the X-TerminalArg mappings"
+  else
+    fail "desktop entry missing or has no AppId mapping (floating TUIs would tile)"
+  fi
+
+  cmd=$(env -u XDG_CONFIG_HOME HOME="$SB/home" XDG_DATA_HOME="$SB/home/.local/share" \
+    xdg-terminal-exec --print-cmd --app-id=org.omarchy.terminal -e true 2>/dev/null | tr '\n' ' ')
+  [[ $cmd == *--class=org.omarchy.terminal* ]] \
+    && pass "xdg-terminal-exec passes --app-id through to WezTerm" \
+    || fail "xdg-terminal-exec drops --app-id (composed: $cmd)"
+else
+  skip "xdg-terminal-exec not installed; skipping desktop-entry checks"
+fi
 
 # ===========================================================================
 section "a config we did not write"
@@ -269,7 +314,7 @@ root_home="$SB/roothome"
 mkdir -p "$root_home"
 
 run_as_root() { # $1 = SUDO_USER (may be empty)
-  env -u XDG_STATE_HOME -u XDG_CONFIG_HOME \
+  env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
     PATH="$SB/shim:$PATH" HOME="$root_home" REPO="$REPO" AM_ROOT=1 \
     SUDO_USER="${1:-}" \
     PREFIX="$SB/prefix" SKEL="$SB/skel" ETC="$SB/etc" ENVIRONMENT_D="$SB/envd" \
@@ -300,6 +345,15 @@ fi
   || pass "a bare root install skipped the per-user stage"
 grep -q 'no account to install the per-user pieces for' "$SB/root.log" \
   && pass "and says why" || fail "but gives no explanation"
+
+# ===========================================================================
+section "did the suite touch the real account?"
+# ===========================================================================
+
+real_after="$(real_state)"
+[[ $real_before == "$real_after" ]] \
+  && pass "nothing outside the throwaway tree was modified" \
+  || fail "the suite modified files in $REAL_HOME -- a sandbox path leaked"
 
 # ===========================================================================
 printf '\n'

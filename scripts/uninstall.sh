@@ -34,6 +34,7 @@ if [[ $SCOPE == local ]]; then
   remove_file "$HOME/.config/omarchy/hooks/theme-set.d/wezterm"
   remove_file "$HOME/.config/omarchy/hooks/font-set.d/wezterm"
   remove_file "$(user_wezterm_dir)/omarchy-tabs-hidden.lua"
+  remove_file "$(user_applications_dir)/org.wezfurlong.wezterm.desktop"
 
   # Restores the list that omarchy-default-terminal wrote before we replaced it,
   # if there was one.
@@ -64,6 +65,7 @@ else
   remove_file "$PREFIX/default/themed/wezterm.lua.tpl"
   remove_file "$PREFIX/config/wezterm/wezterm.lua"
   remove_file "$ETC/wezterm/omarchy-tabs-hidden.lua"
+  remove_file "$SKEL/.local/share/applications/org.wezfurlong.wezterm.desktop"
 
   # Patched Omarchy scripts: put the originals back.
   for patched in \

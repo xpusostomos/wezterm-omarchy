@@ -129,6 +129,15 @@ invoking_user() {
   printf '%s' "$user"
 }
 
+# Where per-user desktop entries are read from, mirroring the XDG rule.
+user_applications_dir() {
+  if [[ -n ${XDG_DATA_HOME:-} ]]; then
+    printf '%s/applications' "$XDG_DATA_HOME"
+  else
+    printf '%s/.local/share/applications' "$HOME"
+  fi
+}
+
 # --- file helpers --------------------------------------------------------
 
 # True when the file exists and carries our marker.

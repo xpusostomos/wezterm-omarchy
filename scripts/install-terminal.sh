@@ -41,10 +41,21 @@ write_xdg_terminals_list() {
 if [[ $SCOPE == local ]]; then
   say "setting WezTerm as the default terminal (user)"
   write_xdg_terminals_list "$HOME/.config/xdg-terminals.list"
+
+  # WezTerm's own desktop entry omits the X-TerminalArg* keys, so
+  # xdg-terminal-exec drops --app-id and Omarchy's TUIs (the package installer,
+  # btop, disk usage) lose the org.omarchy.terminal class they are floated by.
+  # A per-user entry shadows the system one and adds the mappings.
+  install_file "$FILES/org.wezfurlong.wezterm.desktop" \
+    "$(user_applications_dir)/org.wezfurlong.wezterm.desktop"
+
   note "Super+Return, xdg-terminal-exec and the Omarchy screensaver all use this"
+  note "the desktop entry is what makes Omarchy's floating TUI windows float"
 else
   say "seeding the default-terminal preference into $SKEL (system)"
   write_xdg_terminals_list "$SKEL/.config/xdg-terminals.list"
+  install_file "$FILES/org.wezfurlong.wezterm.desktop" \
+    "$SKEL/.local/share/applications/org.wezfurlong.wezterm.desktop"
   warn "this reaches newly created users only; run 'make install-terminal-local'"
   warn "in an existing account"
 fi
