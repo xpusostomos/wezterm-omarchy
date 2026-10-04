@@ -77,9 +77,18 @@ replacing it without needing `FORCE`.
 it. That file themes WezTerm and then loads your own
 `~/.config/wezterm/wezterm.lua` if you have one, letting your settings win. So a
 system-wide install themes every account, including ones that already had a
-config, without touching any of them. `install-all-global` follows the same rule
-for the account running it — it installs only the hooks and
-`xdg-terminals.list`, never the config.
+config, without touching any of them.
+
+`install-all-global` follows the same rule for the account running it — it
+installs only the hooks and `xdg-terminals.list`, never the config. It also seeds
+`/etc/skel`, so accounts created later get those same per-account pieces.
+
+**Run it with `sudo`, not as a root shell.** `sudo make install-all-global`
+keeps `SUDO_USER` set, so the per-user pieces are installed *for you* (via
+`sudo -u "$SUDO_USER" -H`), owned by you, with `omarchy-theme-set` writing to
+your state directory rather than root's. If there is no invoking account — a real
+root login — the per-user stage is skipped with a warning instead of scattering
+hooks into `/root`; run `make install-all-local` as yourself afterwards.
 
 If you want WezTerm themed *and* keep full control of the config, use the global
 install with `GLOBAL_SKIP_USER=1`; if you don't mind our config becoming yours,
@@ -247,3 +256,13 @@ user session, so log out and back in, then restart WezTerm.
 
 **An Omarchy update reverted things.** Expected for anything installed globally,
 since those paths are package-owned. Re-run the target.
+
+**I ran it with `sudo` and it installed into `/root`.** That was a bug, fixed:
+the per-user stage now runs as `SUDO_USER`. If you hit it on an older copy, the
+stray files are `/root/.config/omarchy/hooks/theme-set.d/wezterm`,
+`/root/.config/omarchy/hooks/font-set.d/wezterm` and
+`/root/.config/xdg-terminals.list`; remove them with `sudo rm -rf
+/root/.config/omarchy /root/.config/xdg-terminals.list*`. Your own account was
+never at risk — but it also never got the per-user pieces, so re-run
+`make install-all-global` (with `sudo`, not as root) or
+`make install-all-local`.

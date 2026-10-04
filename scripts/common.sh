@@ -99,6 +99,36 @@ parse_scope_args() {
   fi
 }
 
+# --- who are we -----------------------------------------------------------
+
+# AM_ROOT overrides the root check. Only the test suite sets it: the suite must
+# not run as root, but the root-only branches still need exercising, and that is
+# exactly the path that has surprised people.
+is_root() {
+  if [[ -n ${AM_ROOT:-} ]]; then
+    [[ $AM_ROOT == 1 ]]
+  else
+    [[ ${EUID:-$(id -u)} -eq 0 ]]
+  fi
+}
+
+# The account the per-user pieces should be installed for.
+#
+# Under `sudo make ...` the environment is root's, so $HOME is /root and the
+# per-user stage would scatter hooks and xdg-terminals.list into root's home
+# while leaving the actual account alone. SUDO_USER is who really asked. Prints
+# nothing when there is no such account (a genuine root login), which callers
+# treat as "skip the per-user stage".
+invoking_user() {
+  is_root || return 0
+
+  local user="${SUDO_USER:-}"
+  [[ -n $user && $user != root ]] || return 0
+  getent passwd "$user" >/dev/null 2>&1 || return 0
+
+  printf '%s' "$user"
+}
+
 # --- file helpers --------------------------------------------------------
 
 # True when the file exists and carries our marker.

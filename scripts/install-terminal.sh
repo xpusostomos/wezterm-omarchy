@@ -29,15 +29,12 @@ write_xdg_terminals_list() {
     printf 'org.wezfurlong.wezterm.desktop\n'
   } >"$tmp"
 
-  # This is the one file we expect to find already written by something else
-  # (omarchy-default-terminal writes it), and replacing it is the entire point of
-  # this target -- so back it up and carry on rather than refusing.
-  if [[ -e $dst ]] && ! is_managed "$dst"; then
-    backup_file "$dst"
-  fi
-
-  run_priv install -Dm644 -- "$tmp" "$dst"
-  note "installed: $dst"
+  # `replace` because this is the one file we expect to find already written by
+  # something else (omarchy-default-terminal writes it), and replacing it is the
+  # entire point of this target. Going through install_file means it keeps a
+  # backup, and is a silent no-op when the content already matches like every
+  # other file we install -- rather than rewriting on every run.
+  install_file "$tmp" "$dst" 644 replace
   rm -rf -- "$tmp_dir"
 }
 

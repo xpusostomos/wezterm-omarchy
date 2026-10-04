@@ -21,18 +21,46 @@ SB="$(mktemp -d)"
 trap 'rm -rf "$SB"' EXIT
 
 mkdir -p "$SB/home" "$SB/prefix/bin" "$SB/etc" "$SB/envd" "$SB/skel" "$SB/shim"
-printf '#!/bin/bash\nexec "$@"\n' >"$SB/shim/sudo"
+cat >"$SB/shim/sudo" <<'SHIM'
+#!/bin/bash
+# Stand-in for sudo, used only by this test: runs the command directly, dropping
+# -u USER and -H so everything stays inside the throwaway tree.
+args=()
+while (($#)); do
+  case "$1" in
+    -u) shift 2 ;;
+    -H) shift ;;
+    --) shift; args+=("$@"); break ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+[[ ${#args[@]} -gt 0 ]] && exec "${args[@]}"
+exit 0
+SHIM
 chmod +x "$SB/shim/sudo"
 
 # Real Omarchy scripts to patch, when Omarchy is actually installed. Without them
 # the script-patching targets are skipped rather than failed.
+#
+# Prefer the .wezterm-omarchy.orig copy, which holds the pristine upstream
+# content. The live script may itself be patched -- it is, if you have already
+# run the global install -- and copying that would leave nothing to patch, so
+# every patch assertion below would pass without testing anything.
 patched_scripts=(omarchy-launch-screensaver omarchy-default-terminal omarchy-install-terminal omarchy-screensaver)
+pristine="$SB/pristine"
+mkdir -p "$pristine"
 have_omarchy=0
 for s in "${patched_scripts[@]}"; do
-  if [[ -f /usr/share/omarchy/bin/$s ]]; then
-    cp "/usr/share/omarchy/bin/$s" "$SB/prefix/bin/"
-    have_omarchy=1
+  src=""
+  if [[ -f /usr/share/omarchy/bin/$s.wezterm-omarchy.orig ]]; then
+    src="/usr/share/omarchy/bin/$s.wezterm-omarchy.orig"
+  elif [[ -f /usr/share/omarchy/bin/$s ]]; then
+    src="/usr/share/omarchy/bin/$s"
   fi
+  [[ -n $src ]] || continue
+  cp "$src" "$pristine/$s"
+  cp "$src" "$SB/prefix/bin/$s"
+  have_omarchy=1
 done
 
 if [[ -t 1 ]]; then GREEN=$'\033[32m' RED=$'\033[31m' BOLD=$'\033[1m' OFF=$'\033[0m'; else GREEN="" RED="" BOLD="" OFF=""; fi
@@ -133,6 +161,13 @@ user_config_intact \
   && pass "the account's own config survives a global install" \
   || fail "global install touched the account's config"
 
+[[ -f $SB/skel/.config/omarchy/hooks/font-set.d/wezterm ]] \
+  && pass "font hook seeded into the skeleton for new accounts" \
+  || fail "skeleton not seeded (README says the global install does this)"
+[[ -f $SB/skel/.config/xdg-terminals.list ]] \
+  && pass "default-terminal seeded into the skeleton" \
+  || fail "skeleton default-terminal not seeded"
+
 g1="$(snapshot)"
 run install-all.sh --global >/dev/null 2>&1
 g2="$(snapshot)"
@@ -161,12 +196,12 @@ if ((have_omarchy)); then
   s=omarchy-default-terminal
   orig="$SB/prefix/bin/$s.wezterm-omarchy.orig"
   if [[ -f $orig ]]; then
-    cp /usr/share/omarchy/bin/$s "$SB/prefix/bin/$s"   # simulate the update
+    cp "$pristine/$s" "$SB/prefix/bin/$s"   # simulate the update
     run install-menus.sh --global >/dev/null 2>&1
-    diff -q /usr/share/omarchy/bin/$s "$orig" >/dev/null \
+    diff -q "$pristine/$s" "$orig" >/dev/null \
       && pass ".orig refreshed after an Omarchy update" || fail ".orig is stale after an update"
     run uninstall.sh --global >/dev/null 2>&1
-    diff -q /usr/share/omarchy/bin/$s "$SB/prefix/bin/$s" >/dev/null \
+    diff -q "$pristine/$s" "$SB/prefix/bin/$s" >/dev/null \
       && pass "uninstall restored the current upstream version" \
       || fail "uninstall restored the wrong version"
     run install-all.sh --global >/dev/null 2>&1
@@ -188,8 +223,8 @@ run uninstall.sh --global >/dev/null 2>&1 || fail "uninstall --global exited non
 if ((have_omarchy)); then
   bad=0
   for s in "${patched_scripts[@]}"; do
-    [[ -f /usr/share/omarchy/bin/$s && -f $SB/prefix/bin/$s ]] || continue
-    diff -q "/usr/share/omarchy/bin/$s" "$SB/prefix/bin/$s" >/dev/null || bad=1
+    [[ -f "$pristine/$s" && -f $SB/prefix/bin/$s ]] || continue
+    diff -q "$pristine/$s" "$SB/prefix/bin/$s" >/dev/null || bad=1
   done
   ((bad == 0)) && pass "patched scripts restored byte-identical" || fail "a patched script was not restored exactly"
 fi
@@ -204,6 +239,51 @@ run uninstall.sh --local >/dev/null 2>&1
 run uninstall.sh --global >/dev/null 2>&1
 u2="$(snapshot)"
 [[ $u1 == $u2 ]] && pass "uninstalling twice is a no-op" || fail "a second uninstall changed the tree"
+
+# ===========================================================================
+section "run under sudo (the case that installs into /root by accident)"
+# ===========================================================================
+#
+# `sudo make install` leaves HOME at /root, so the per-user stage has to recover
+# the real account from SUDO_USER or it scatters hooks into root's home and
+# leaves the actual account untouched. AM_ROOT makes is_root() true without the
+# suite needing to be root.
+
+root_home="$SB/roothome"
+mkdir -p "$root_home"
+
+run_as_root() { # $1 = SUDO_USER (may be empty)
+  env -u XDG_STATE_HOME -u XDG_CONFIG_HOME \
+    PATH="$SB/shim:$PATH" HOME="$root_home" REPO="$REPO" AM_ROOT=1 \
+    SUDO_USER="${1:-}" \
+    PREFIX="$SB/prefix" SKEL="$SB/skel" ETC="$SB/etc" ENVIRONMENT_D="$SB/envd" \
+    bash "$REPO/scripts/install-all.sh" --global
+}
+
+# sudo by a real account: the per-user pieces must go to that account, not root.
+rm -rf "$root_home"
+mkdir -p "$root_home"
+run_as_root "$(id -un)" >/dev/null 2>&1
+[[ -f $root_home/.config/omarchy/hooks/theme-set.d/wezterm ]] \
+  && pass "under sudo, per-user pieces installed for the invoking account" \
+  || fail "under sudo, the per-user pieces did not reach the invoking account"
+[[ -e $root_home/.config/wezterm/wezterm.lua ]] \
+  && fail "under sudo, the account's config was touched" \
+  || pass "under sudo, the account's own config is still left alone"
+
+# genuine root with no invoking account: skip, and say so, rather than litter /root.
+rm -rf "$root_home"
+mkdir -p "$root_home"
+if run_as_root "" >"$SB/root.log" 2>&1; then
+  pass "a bare root install completes"
+else
+  fail "a bare root install failed"
+fi
+[[ -e $root_home/.config/omarchy ]] \
+  && fail "a bare root install wrote per-user files anyway" \
+  || pass "a bare root install skipped the per-user stage"
+grep -q 'no account to install the per-user pieces for' "$SB/root.log" \
+  && pass "and says why" || fail "but gives no explanation"
 
 # ===========================================================================
 printf '\n'

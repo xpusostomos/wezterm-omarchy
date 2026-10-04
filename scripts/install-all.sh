@@ -25,20 +25,44 @@ else
   bash "$here/install-screensaver.sh" --global
   bash "$here/install-menus.sh" --global
 
-  # The system-wide config already themes this account, and merges whatever
-  # config this account has, so only the per-user pieces the system config cannot
+  # Seed the skeleton for accounts created from now on. The theme itself already
+  # reaches every account through the system-wide config; these two are the
+  # per-account extras (a font hook, and WezTerm as the default terminal) that a
+  # new user would otherwise have to install themselves.
+  bash "$here/install-font.sh" --global
+  bash "$here/install-terminal.sh" --global
+
+  # The system-wide config already themes every account, and merges whatever
+  # config an account has, so only the per-user pieces the system config cannot
   # provide are installed here. The config itself is deliberately NOT installed:
-  # doing so would replace this user's own wezterm.lua, and the refusal that
+  # doing so would replace that user's own wezterm.lua, and the refusal that
   # protects a hand-written config would abort the whole system install with it.
   if [[ ${GLOBAL_SKIP_USER:-0} == 1 ]]; then
-    note "GLOBAL_SKIP_USER=1, so this account's per-user pieces were left alone"
+    note "GLOBAL_SKIP_USER=1, so no account's per-user pieces were touched"
     note "run 'make install-all-local' in each account that should be themed"
   else
-    say "also installing the per-user pieces for $USER"
-    note "your own ~/.config/wezterm/wezterm.lua is left exactly as it is"
-    bash "$here/install-theme.sh" --local --hook-only
-    bash "$here/install-font.sh" --local
-    bash "$here/install-terminal.sh" --local
+    invoker="$(invoking_user)"
+
+    if [[ -n $invoker ]]; then
+      # Run these as the invoking user, not as root: sudo leaves $HOME at /root,
+      # so running them here would put hooks in root's home and leave the real
+      # account untouched. -H gives them their own HOME, so files are owned by
+      # them and omarchy-theme-set writes to their state directory.
+      say "also installing the per-user pieces for $invoker"
+      note "run as $invoker rather than root, since sudo puts \$HOME at /root"
+      run sudo -u "$invoker" -H bash "$here/install-theme.sh" --local --hook-only
+      run sudo -u "$invoker" -H bash "$here/install-font.sh" --local
+      run sudo -u "$invoker" -H bash "$here/install-terminal.sh" --local
+    elif is_root; then
+      warn "running as root, so there is no account to install the per-user pieces for"
+      warn "run 'make install-all-local' as your normal user to finish that account"
+    else
+      say "also installing the per-user pieces for $USER"
+      note "your own ~/.config/wezterm/wezterm.lua is left exactly as it is"
+      bash "$here/install-theme.sh" --local --hook-only
+      bash "$here/install-font.sh" --local
+      bash "$here/install-terminal.sh" --local
+    fi
   fi
 
   say "done -- system-wide WezTerm theming is in place"

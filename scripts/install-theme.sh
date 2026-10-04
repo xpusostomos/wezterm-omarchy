@@ -68,6 +68,10 @@ if [[ $SCOPE == local ]]; then
   if [[ $HOOK_ONLY != 1 ]]; then
     detect_gist_leftovers
     regenerate_theme_if_needed "${theme_sources_changed:-1}"
+  else
+    # A system-wide install runs this inside the user's own account so their
+    # colours exist straight away, but leaves an already-generated file alone.
+    regenerate_theme_if_needed 0
   fi
 else
   say "installing the WezTerm theme template (system)"
@@ -83,7 +87,16 @@ else
 
   # Generate this user's colours now rather than at the next theme change, so the
   # install has a visible effect without waiting for one.
-  regenerate_theme_if_needed "$INSTALL_CHANGED"
+  #
+  # Skipped when running as root: $HOME is /root there, which has no Omarchy
+  # theme, and generating into the real account is the per-user stage's job --
+  # install-all runs that as the invoking user, which is the only way it lands in
+  # the right state directory and with the right ownership.
+  if is_root; then
+    note "running as root, so the colours were left for the per-user stage"
+  else
+    regenerate_theme_if_needed "$INSTALL_CHANGED"
+  fi
 
   warn "files under $PREFIX are owned by the Omarchy package and may be reverted"
   warn "by an update; re-run this target if that happens"
