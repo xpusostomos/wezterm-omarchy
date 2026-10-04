@@ -1,0 +1,215 @@
+#!/bin/bash
+# Round-trip and idempotency tests for the installers.
+#
+# Everything happens in a throwaway tree: HOME, PREFIX, SKEL, ETC and
+# ENVIRONMENT_D are all redirected, and a stub `sudo` stands in so the
+# system-wide path can be exercised without root. Nothing outside the temp
+# directory is read or written, so this is safe to run anywhere.
+#
+# These are the checks that caught the real bugs during development, kept so they
+# stay caught: re-running must be a no-op, uninstall must restore what was there,
+# installing globally must not touch the account's own config, and re-patching an
+# Omarchy script must not double-apply.
+#
+# usage: test/install-matrix.sh
+
+set -euo pipefail
+
+REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+SB="$(mktemp -d)"
+trap 'rm -rf "$SB"' EXIT
+
+mkdir -p "$SB/home" "$SB/prefix/bin" "$SB/etc" "$SB/envd" "$SB/skel" "$SB/shim"
+printf '#!/bin/bash\nexec "$@"\n' >"$SB/shim/sudo"
+chmod +x "$SB/shim/sudo"
+
+# Real Omarchy scripts to patch, when Omarchy is actually installed. Without them
+# the script-patching targets are skipped rather than failed.
+patched_scripts=(omarchy-launch-screensaver omarchy-default-terminal omarchy-install-terminal omarchy-screensaver)
+have_omarchy=0
+for s in "${patched_scripts[@]}"; do
+  if [[ -f /usr/share/omarchy/bin/$s ]]; then
+    cp "/usr/share/omarchy/bin/$s" "$SB/prefix/bin/"
+    have_omarchy=1
+  fi
+done
+
+if [[ -t 1 ]]; then GREEN=$'\033[32m' RED=$'\033[31m' BOLD=$'\033[1m' OFF=$'\033[0m'; else GREEN="" RED="" BOLD="" OFF=""; fi
+
+failures=0
+pass() { printf '  %sok%s    %s\n' "$GREEN" "$OFF" "$*"; }
+fail() {
+  printf '  %sFAIL%s  %s\n' "$RED" "$OFF" "$*"
+  failures=$((failures + 1))
+}
+skip() { printf '  skip  %s\n' "$*"; }
+section() { printf '\n%s%s%s\n' "$BOLD" "$*" "$OFF"; }
+
+# Run one of our scripts against the throwaway tree.
+run() {
+  env -u XDG_STATE_HOME -u XDG_CONFIG_HOME \
+    PATH="$SB/shim:$PATH" HOME="$SB/home" REPO="$REPO" \
+    PREFIX="$SB/prefix" SKEL="$SB/skel" ETC="$SB/etc" ENVIRONMENT_D="$SB/envd" \
+    bash "$REPO/scripts/$1" "${@:2}"
+}
+
+snapshot() {
+  find "$SB" -path "$SB/shim" -prune -o -type f -print0 2>/dev/null \
+    | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum | cut -c1-16
+}
+count_baks() { find "$SB" -name '*.bak.*' 2>/dev/null | wc -l; }
+
+user_config="$SB/home/.config/wezterm/wezterm.lua"
+write_user_config() {
+  mkdir -p "$(dirname "$user_config")"
+  printf 'local w=require("wezterm")\nlocal c=w.config_builder()\nc.font_size=33.0 -- MINE\nreturn c\n' \
+    >"$user_config"
+}
+user_config_intact() { [[ -f $user_config ]] && grep -q 'MINE' "$user_config"; }
+
+# ===========================================================================
+section "local install, clean account"
+# ===========================================================================
+
+run install-all.sh --local >/dev/null 2>&1 || fail "install-all --local exited non-zero"
+[[ -x $SB/home/.config/omarchy/hooks/theme-set.d/wezterm ]] \
+  && pass "reload hook installed" || fail "reload hook missing"
+[[ -f $SB/home/.config/omarchy/themed/wezterm.lua.tpl ]] \
+  && pass "theme template installed where Omarchy reads it" \
+  || fail "theme template missing (must be in ~/.config/omarchy/themed)"
+
+baks_before=$(count_baks)
+l1="$(snapshot)"
+run install-all.sh --local >/dev/null 2>&1
+l2="$(snapshot)"
+[[ $l1 == $l2 ]] && pass "re-running is a no-op (hash $l2)" || fail "re-running changed the tree"
+[[ $(count_baks) -eq $baks_before ]] \
+  && pass "re-running created no backup files" \
+  || fail "re-running created backups"
+
+tab1="$(snapshot)"
+run install-tabs.sh --local >/dev/null 2>&1
+run install-tabs.sh --local >/dev/null 2>&1
+tab2="$(snapshot)"
+[[ $tab1 != "$tab2" ]] || fail "tabs target had no effect"
+[[ -f $SB/home/.config/wezterm/omarchy-tabs-hidden.lua ]] \
+  && pass "tab-bar add-on installed" || fail "tab-bar add-on missing"
+run uninstall.sh --local >/dev/null 2>&1
+[[ -e $SB/home/.config/wezterm/omarchy-tabs-hidden.lua ]] \
+  && fail "tab-bar add-on not removed" || pass "tab-bar add-on removed"
+
+# ===========================================================================
+section "a config we did not write"
+# ===========================================================================
+
+write_user_config
+if run install-theme.sh --local >/dev/null 2>&1; then
+  fail "install-theme overwrote a hand-written config without FORCE"
+else
+  pass "refuses to replace a hand-written config (exit non-zero)"
+fi
+user_config_intact && pass "that config is still intact" || fail "that config was damaged"
+
+FORCE=1 run install-theme.sh --local >/dev/null 2>&1 || fail "FORCE=1 install failed"
+grep -q 'managed by wezterm-omarchy' "$user_config" \
+  && pass "FORCE=1 replaced it with ours" || fail "FORCE=1 did not install"
+grep -lq 'MINE' "$SB/home/.config/wezterm/"*.bak.* 2>/dev/null \
+  && pass "the original was kept as a .bak" || fail "no backup of the original"
+
+run uninstall.sh --local >/dev/null 2>&1
+user_config_intact && pass "uninstall restored the original" || fail "uninstall did not restore it"
+
+# ===========================================================================
+section "global install"
+# ===========================================================================
+
+run install-all.sh --global >/dev/null 2>&1 || fail "install-all --global exited non-zero"
+[[ -f $SB/etc/wezterm/wezterm.lua ]] && pass "system-wide config written" || fail "no /etc/wezterm config"
+grep -q '^WEZTERM_CONFIG_FILE=' "$SB/envd/99-wezterm-omarchy.conf" 2>/dev/null \
+  && pass "WEZTERM_CONFIG_FILE set in environment.d" || fail "environment.d file missing"
+
+user_config_intact \
+  && pass "the account's own config survives a global install" \
+  || fail "global install touched the account's config"
+
+g1="$(snapshot)"
+run install-all.sh --global >/dev/null 2>&1
+g2="$(snapshot)"
+[[ $g1 == $g2 ]] && pass "re-running globally is a no-op (hash $g2)" || fail "re-running changed the tree"
+
+if ((have_omarchy)); then
+  once=1
+  for s in "${patched_scripts[@]}"; do
+    [[ -f $SB/prefix/bin/$s ]] || continue
+    before=$(grep -c 'wezterm' "$SB/prefix/bin/$s" 2>/dev/null || :)
+    ((before > 0)) || continue
+    case "$s" in
+    omarchy-launch-screensaver) run install-screensaver.sh --global >/dev/null 2>&1 ;;
+    omarchy-default-terminal | omarchy-install-terminal) run install-menus.sh --global >/dev/null 2>&1 ;;
+    *) continue ;;
+    esac
+    after=$(grep -c 'wezterm' "$SB/prefix/bin/$s" 2>/dev/null || :)
+    [[ $before == "$after" ]] || once=0
+  done
+  ((once)) && pass "re-running the patchers does not double-apply" || fail "a patch was applied twice"
+  [[ $(find "$SB/prefix/bin" -name '*.wezterm-omarchy.orig' | wc -l) -gt 0 ]] \
+    && pass "pristine copies kept for uninstall" || fail "no .orig copies to restore from"
+
+  # An Omarchy update replaces a patched script: the .orig must not stay stale,
+  # or uninstall would restore the *old* upstream version over the new one.
+  s=omarchy-default-terminal
+  orig="$SB/prefix/bin/$s.wezterm-omarchy.orig"
+  if [[ -f $orig ]]; then
+    cp /usr/share/omarchy/bin/$s "$SB/prefix/bin/$s"   # simulate the update
+    run install-menus.sh --global >/dev/null 2>&1
+    diff -q /usr/share/omarchy/bin/$s "$orig" >/dev/null \
+      && pass ".orig refreshed after an Omarchy update" || fail ".orig is stale after an update"
+    run uninstall.sh --global >/dev/null 2>&1
+    diff -q /usr/share/omarchy/bin/$s "$SB/prefix/bin/$s" >/dev/null \
+      && pass "uninstall restored the current upstream version" \
+      || fail "uninstall restored the wrong version"
+    run install-all.sh --global >/dev/null 2>&1
+  fi
+else
+  skip "Omarchy not installed; skipping patch checks"
+fi
+
+# ===========================================================================
+section "uninstall"
+# ===========================================================================
+
+run uninstall.sh --global >/dev/null 2>&1 || fail "uninstall --global exited non-zero"
+[[ -e $SB/etc/wezterm/wezterm.lua ]] && fail "config left behind" || pass "system-wide config removed"
+[[ -e $SB/envd/99-wezterm-omarchy.conf ]] \
+  && fail "environment file left behind, so WEZTERM_CONFIG_FILE now dangles" \
+  || pass "environment file removed with the config (no dangling variable)"
+
+if ((have_omarchy)); then
+  bad=0
+  for s in "${patched_scripts[@]}"; do
+    [[ -f /usr/share/omarchy/bin/$s && -f $SB/prefix/bin/$s ]] || continue
+    diff -q "/usr/share/omarchy/bin/$s" "$SB/prefix/bin/$s" >/dev/null || bad=1
+  done
+  ((bad == 0)) && pass "patched scripts restored byte-identical" || fail "a patched script was not restored exactly"
+fi
+
+run uninstall.sh --local >/dev/null 2>&1 || fail "uninstall --local exited non-zero"
+user_config_intact && pass "the account's own config restored" || fail "the account's config was not restored"
+[[ -e $SB/home/.config/omarchy/hooks/theme-set.d/wezterm ]] \
+  && fail "reload hook left behind" || pass "our per-user files removed"
+
+u1="$(snapshot)"
+run uninstall.sh --local >/dev/null 2>&1
+run uninstall.sh --global >/dev/null 2>&1
+u2="$(snapshot)"
+[[ $u1 == $u2 ]] && pass "uninstalling twice is a no-op" || fail "a second uninstall changed the tree"
+
+# ===========================================================================
+printf '\n'
+if ((failures == 0)); then
+  printf '%sinstall matrix: all checks passed%s\n\n' "$GREEN" "$OFF"
+else
+  printf '%sinstall matrix: %d check(s) failed%s\n\n' "$RED" "$failures" "$OFF"
+  exit 1
+fi

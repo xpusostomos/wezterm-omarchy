@@ -1,0 +1,18 @@
+#!/bin/bash
+# managed by wezterm-omarchy
+#
+# Omarchy runs everything in ~/.config/omarchy/hooks/font-set.d/ after
+# `omarchy font set`, passing the new family name as $1.
+#
+# wezterm.lua resolves the font live from fontconfig (fc-match monospace), which
+# is where `omarchy font set` records the choice, so no rewriting is needed here.
+# All this does is nudge WezTerm into re-reading its config so the new font takes
+# effect without a restart.
+
+set -euo pipefail
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}/wezterm/wezterm.lua"
+
+if [[ -f $config ]]; then
+  touch "$config"
+fi
