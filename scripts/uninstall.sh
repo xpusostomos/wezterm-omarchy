@@ -13,6 +13,26 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 parse_scope_args "$@"
 
+# MENUS_ONLY=1 removes just the menu row and helper, leaving the rest alone --
+# the counterpart to install-menus.sh --local.
+if [[ ${MENUS_ONLY:-0} == 1 ]]; then
+  if [[ $SCOPE == local ]]; then
+    say "removing WezTerm from Omarchy's default-terminal menu (user)"
+    remove_file "$HOME/.local/bin/wezterm-omarchy-default-terminal"
+    if command -v python3 >/dev/null 2>&1; then
+      run python3 "$REPO/scripts/merge-menu-jsonc.py" \
+        "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc" x --remove
+    fi
+  else
+    say "removing the seeded menu row (system)"
+    if command -v python3 >/dev/null 2>&1; then
+      run python3 "$REPO/scripts/merge-menu-jsonc.py" \
+        "$SKEL/.config/omarchy/extensions/omarchy-menu.jsonc" x --remove
+    fi
+  fi
+  exit 0
+fi
+
 # TABS_ONLY=1 removes just the tab-bar add-on, leaving the rest of the install
 # alone -- the counterpart to install-tabs.sh.
 if [[ ${TABS_ONLY:-0} == 1 ]]; then
@@ -35,6 +55,13 @@ if [[ $SCOPE == local ]]; then
   remove_file "$HOME/.config/omarchy/hooks/font-set.d/wezterm"
   remove_file "$(user_wezterm_dir)/omarchy-tabs-hidden.lua"
   remove_file "$(user_applications_dir)/org.wezfurlong.wezterm.desktop"
+
+  # The menu row and the helper its action calls.
+  remove_file "$HOME/.local/bin/wezterm-omarchy-default-terminal"
+  if command -v python3 >/dev/null 2>&1; then
+    run python3 "$REPO/scripts/merge-menu-jsonc.py" \
+      "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc" x --remove
+  fi
 
   # Restores the list that omarchy-default-terminal wrote before we replaced it,
   # if there was one.
@@ -66,6 +93,12 @@ else
   remove_file "$PREFIX/config/wezterm/wezterm.lua"
   remove_file "$ETC/wezterm/omarchy-tabs-hidden.lua"
   remove_file "$SKEL/.local/share/applications/org.wezfurlong.wezterm.desktop"
+
+  # The menu row seeded into the skeleton.
+  if command -v python3 >/dev/null 2>&1; then
+    run python3 "$REPO/scripts/merge-menu-jsonc.py" \
+      "$SKEL/.config/omarchy/extensions/omarchy-menu.jsonc" x --remove
+  fi
 
   # Patched Omarchy scripts: put the originals back.
   for patched in \

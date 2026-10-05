@@ -15,6 +15,7 @@ if [[ $SCOPE == local ]]; then
   bash "$here/install-theme.sh" --local
   bash "$here/install-font.sh" --local
   bash "$here/install-terminal.sh" --local
+  bash "$here/install-menus.sh" --local
 
   say "done -- WezTerm now follows the Omarchy theme"
   note "no root was needed and nothing outside your home was touched"
@@ -53,6 +54,7 @@ else
       run sudo -u "$invoker" -H bash "$here/install-theme.sh" --local --hook-only
       run sudo -u "$invoker" -H bash "$here/install-font.sh" --local --hook-only
       run sudo -u "$invoker" -H bash "$here/install-terminal.sh" --local
+      run sudo -u "$invoker" -H bash "$here/install-menus.sh" --local
     elif is_root; then
       warn "running as root, so there is no account to install the per-user pieces for"
       warn "run 'make install-all-local' as your normal user to finish that account"
@@ -62,6 +64,7 @@ else
       bash "$here/install-theme.sh" --local --hook-only
       bash "$here/install-font.sh" --local --hook-only
       bash "$here/install-terminal.sh" --local
+      bash "$here/install-menus.sh" --local
     fi
   fi
 

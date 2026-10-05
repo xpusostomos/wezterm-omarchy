@@ -104,7 +104,10 @@ install-screensaver-global: ## Let Omarchy's screensaver run in WezTerm (needs r
 install-screensaver-grace-global: ## Optional: ignore brief focus loss at startup
 	@$(SCRIPTS)/install-screensaver-grace.sh --global
 
-.PHONY: install-menus-global
+.PHONY: install-menus-local install-menus-global
+install-menus-local: ## Add WezTerm to Omarchy's default-terminal menu (no root)
+	@$(SCRIPTS)/install-menus.sh --local
+
 install-menus-global: ## Teach Omarchy's terminal pickers about WezTerm (needs root)
 	@$(SCRIPTS)/install-menus.sh --global
 
@@ -129,6 +132,13 @@ uninstall-tabs-local: ## Restore the tab bar for this user
 
 uninstall-tabs-global: ## Restore the tab bar system-wide (needs root)
 	@TABS_ONLY=1 $(SCRIPTS)/uninstall.sh --global
+
+.PHONY: uninstall-menus-local uninstall-menus-global
+uninstall-menus-local: ## Remove WezTerm from the default-terminal menu for this user
+	@MENUS_ONLY=1 $(SCRIPTS)/uninstall.sh --local
+
+uninstall-menus-global: ## Remove the seeded menu row (needs root)
+	@MENUS_ONLY=1 $(SCRIPTS)/uninstall.sh --global
 
 .PHONY: check
 check: ## Verify the live install: theme generates and the config loads

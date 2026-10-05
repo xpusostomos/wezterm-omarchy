@@ -103,7 +103,8 @@ make install-theme-local        # theme colours + live reload
 make install-font-local         # follow `omarchy font set`
 make install-terminal-local     # make WezTerm the default terminal
 make install-screensaver-global # let Omarchy's screensaver run in WezTerm
-make install-menus-global       # teach Omarchy's terminal pickers about WezTerm
+make install-menus-local        # add WezTerm to Omarchy's terminal menu
+make install-menus-global       # teach Omarchy's terminal scripts about WezTerm
 make install-tabs-local         # hide the tab bar (see below)
 make install-all-local          # all of the above, for this user
 make install-all-global         # all of the above, system-wide
@@ -111,6 +112,36 @@ make install-all-global         # all of the above, system-wide
 make uninstall-local
 make uninstall-global
 ```
+
+### Floating TUI windows, and the terminal menu
+
+Two separate things Omarchy does that WezTerm has to be taught, both handled by
+`install-terminal-local` and `install-menus-local`. Neither needs root.
+
+**Floating TUI windows.** Omarchy launches its installers, btop, disk usage and
+friends as `xdg-terminal-exec --app-id=org.omarchy.terminal`, and floats whatever
+window has that class. WezTerm's shipped desktop entry declares none of the
+`X-TerminalArg*` keys, so `xdg-terminal-exec` silently drops `--app-id` and those
+windows come up tiled. A per-user entry adds the mappings
+(`X-TerminalArgAppId=--class=`), shadowing the packaged one.
+
+Its `Exec` is deliberately bare (`wezterm start`), not the packaged
+`wezterm start --cwd .`: `omarchy-launch-terminal` passes `--dir`, which maps to
+`--cwd=`, and WezTerm *rejects a repeated `--cwd`* ("cannot be used multiple
+times") and exits without starting — so keeping both makes SUPER+RETURN do
+nothing at all.
+
+**The default-terminal menu.** That list is data, not code: `omarchy-menu.jsonc`
+holds one row per terminal, each gated by `omarchy-cmd-present`. With no WezTerm
+row it cannot appear however the scripts are patched. Omarchy merges
+`~/.config/omarchy/extensions/omarchy-menu.jsonc` over the defaults, and only that
+file is touched — inserted with markers, validated before writing, and removed
+byte-identically on uninstall. The row's action calls a small helper, since
+Omarchy's own `omarchy-default-terminal` only accepts the other four terminals and
+lives where a user cannot override it. (`install-menus-global`, needing root,
+patches that script too, so `omarchy default terminal wezterm` works.)
+
+
 
 ### The tab bar
 

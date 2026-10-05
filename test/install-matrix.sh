@@ -184,9 +184,47 @@ if command -v xdg-terminal-exec >/dev/null 2>&1; then
   [[ $cmd == *--class=org.omarchy.terminal* ]] \
     && pass "xdg-terminal-exec passes --app-id through to WezTerm" \
     || fail "xdg-terminal-exec drops --app-id (composed: $cmd)"
+
+  # The composed command has to actually run, not merely look right. It once
+  # carried --cwd twice -- the stock `Exec=wezterm start --cwd .` plus the
+  # X-TerminalArgDir mapping -- and wezterm rejects a repeated --cwd outright
+  # ("cannot be used multiple times") and exits without starting, so SUPER+RETURN
+  # silently did nothing.
+  cwd_cmd=$(env -u XDG_CONFIG_HOME HOME="$SB/home" XDG_DATA_HOME="$SB/home/.local/share" \
+    xdg-terminal-exec --print-cmd --dir=/tmp -e true 2>/dev/null | tr '\n' ' ')
+  n=$(grep -o -- '--cwd' <<<"$cwd_cmd" | wc -l)
+  ((n <= 1)) \
+    && pass "composed command carries at most one --cwd" \
+    || fail "composed command repeats --cwd, so wezterm would refuse to start: $cwd_cmd"
+
+  grep -qE '^Exec=wezterm start$' "$entry" \
+    && pass "desktop entry's Exec is bare, leaving --cwd to the mapping" \
+    || fail "desktop entry's Exec sets --cwd as well as the mapping (duplicate)"
 else
   skip "xdg-terminal-exec not installed; skipping desktop-entry checks"
 fi
+
+# The default-terminal SELECTOR is data, not code: omarchy-menu.jsonc holds one
+# row per terminal, each gated by `omarchy-cmd-present`. Without a wezterm row it
+# can never appear there however the scripts are patched -- which is exactly what
+# was wrong before.
+menu_file="$SB/home/.config/omarchy/extensions/omarchy-menu.jsonc"
+if [[ -f $menu_file ]] && grep -q 'setup.default.terminal.wezterm' "$menu_file"; then
+  pass "menu row added to Omarchy's menu extensions"
+  if python3 -c 'import json,re,sys
+t=re.sub(r"//.*","",open(sys.argv[1]).read())
+t=re.sub(r",(\s*[}\]])",r"\1",t)
+json.loads(t)' "$menu_file" 2>/dev/null; then
+    pass "menu file still parses"
+  else
+    fail "menu file does not parse -- the menu would break"
+  fi
+else
+  fail "no wezterm row in the menu extensions (selector would not offer it)"
+fi
+[[ -x $SB/home/.local/bin/wezterm-omarchy-default-terminal ]] \
+  && pass "menu row's helper installed" \
+  || fail "menu row helper missing -- the row's action would fail"
 
 # ===========================================================================
 section "a config we did not write"
@@ -294,6 +332,8 @@ run uninstall.sh --local >/dev/null 2>&1 || fail "uninstall --local exited non-z
 user_config_intact && pass "the account's own config restored" || fail "the account's config was not restored"
 [[ -e $SB/home/.config/omarchy/hooks/theme-set.d/wezterm ]] \
   && fail "reload hook left behind" || pass "our per-user files removed"
+grep -q 'setup.default.terminal.wezterm' "$SB/home/.config/omarchy/extensions/omarchy-menu.jsonc" 2>/dev/null \
+  && fail "menu row left behind" || pass "menu row removed from the extensions"
 
 u1="$(snapshot)"
 run uninstall.sh --local >/dev/null 2>&1

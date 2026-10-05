@@ -23,7 +23,13 @@ Keywords=shell;prompt;command;commandline;cmd;
 Icon=org.wezfurlong.wezterm
 StartupWMClass=org.wezfurlong.wezterm
 TryExec=wezterm
-Exec=wezterm start --cwd .
+
+# NOT `wezterm start --cwd .` as the package ships it. omarchy-launch-terminal
+# runs xdg-terminal-exec --dir=<cwd>, which this entry maps to --cwd=, and wezterm
+# rejects a repeated --cwd ("cannot be used multiple times") and exits without
+# starting. Dropping it from Exec leaves exactly one --cwd, and matches how the
+# other terminals' entries are written -- bare Exec, mappings in the keys.
+Exec=wezterm start
 Type=Application
 Categories=System;TerminalEmulator;Utility;
 Terminal=false
