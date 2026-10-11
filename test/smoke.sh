@@ -122,6 +122,29 @@ LUA
     pass "no 'could not load theme' errors"
   fi
 
+  # --- the screensaver and the default terminal have to agree -------------
+  #
+  # Omarchy's screensaver only runs in a hardcoded list of host terminals, in a
+  # root-owned script. Making WezTerm the default without teaching that list
+  # leaves the screensaver refusing to start, and the only symptom is a
+  # "Screensaver only runs in ..." notification.
+  if command -v xdg-terminal-exec >/dev/null 2>&1; then
+    default_terminal="$(xdg-terminal-exec --print-id 2>/dev/null || true)"
+    launcher="$PREFIX/bin/omarchy-launch-screensaver"
+
+    if [[ $default_terminal != *wezterm* ]]; then
+      pass "WezTerm is not the default terminal, so the screensaver is unaffected"
+    elif [[ ! -f $launcher ]]; then
+      skip "no omarchy-launch-screensaver found; cannot check"
+    elif grep -qF '*wezterm*' "$launcher"; then
+      pass "the screensaver accepts WezTerm"
+    else
+      warn "WezTerm is the default terminal but Omarchy's screensaver does not accept it"
+      note "the screensaver will refuse to start. Fix it with:"
+      note "    sudo make install-screensaver-global"
+    fi
+  fi
+
   # --- is the installed config actually the one in this repo? -------------
   #
   # Editing files/wezterm.lua and then running a target that does not install it

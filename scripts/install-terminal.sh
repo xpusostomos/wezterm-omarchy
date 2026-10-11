@@ -51,6 +51,17 @@ if [[ $SCOPE == local ]]; then
 
   note "Super+Return, xdg-terminal-exec and the Omarchy screensaver all use this"
   note "the desktop entry is what makes Omarchy's floating TUI windows float"
+
+  # A consequence worth stating out loud: Omarchy's screensaver only runs in a
+  # hardcoded list of terminals, and that list is in a root-owned script. Making
+  # WezTerm the default without teaching that list leaves the screensaver
+  # refusing to start, with nothing but a "only runs in ..." notification to
+  # explain it.
+  if [[ -f $PREFIX/bin/omarchy-launch-screensaver ]] &&
+    ! grep -qF '*wezterm*' "$PREFIX/bin/omarchy-launch-screensaver"; then
+    warn "Omarchy's screensaver only runs in Alacritty/Foot/Ghostty/Kitty, so it"
+    warn "will now refuse to start. Fix that with: sudo make install-screensaver-global"
+  fi
 else
   say "seeding the default-terminal preference into $SKEL (system)"
   write_xdg_terminals_list "$SKEL/.config/xdg-terminals.list"

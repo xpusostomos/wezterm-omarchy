@@ -1,0 +1,25 @@
+#!/bin/bash
+# managed by wezterm-omarchy
+#
+# Set WezTerm as the default terminal.
+#
+# Omarchy's own omarchy-default-terminal only accepts alacritty|foot|ghostty|kitty
+# and lives in a package-owned path that comes first on PATH, so a user cannot
+# override it. The menu row installed by `make install-menus-local` therefore
+# calls this instead: the same result, without needing root or a patched system
+# script. `make install-menus-global` still patches omarchy-default-terminal, so
+# the canonical `omarchy default terminal wezterm` works too -- and when it does,
+# the row prefers it.
+
+set -euo pipefail
+
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# Same file omarchy-default-terminal writes, in the same format.
+cat >"$config_dir/xdg-terminals.list" <<'EOF'
+# Terminal emulator preference order for xdg-terminal-exec
+# The first found and valid terminal will be used
+org.wezfurlong.wezterm.desktop
+EOF
+
+omarchy-notification-send -g "" "WezTerm is now the default terminal" 2>/dev/null || true
