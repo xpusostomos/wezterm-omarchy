@@ -342,6 +342,43 @@ u2="$(snapshot)"
 [[ $u1 == $u2 ]] && pass "uninstalling twice is a no-op" || fail "a second uninstall changed the tree"
 
 # ===========================================================================
+section "theme regeneration must not depend on inheriting OMARCHY_PATH"
+# ===========================================================================
+#
+# omarchy-theme-set resolves its themes from $OMARCHY_PATH, and sudo resets the
+# environment -- so a global install reported "Theme '<current>' does not exist"
+# for whatever theme happened to be active, which looks like that particular
+# theme being broken. Stub the command and check what we hand it with
+# OMARCHY_PATH absent from the environment.
+
+cat >"$SB/shim/omarchy-theme-set" <<'STUB'
+#!/bin/bash
+printf '%s\n' "${OMARCHY_PATH:-<unset>}" >"$STUB_OUT"
+STUB
+chmod +x "$SB/shim/omarchy-theme-set"
+
+regen_home="$SB/regenhome"
+rm -rf "$regen_home"
+mkdir -p "$regen_home/.local/state/omarchy/current"
+echo "tokyo-night" >"$regen_home/.local/state/omarchy/current/theme.name"
+
+env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u OMARCHY_PATH \
+  PATH="$SB/shim:$PATH" HOME="$regen_home" REPO="$REPO" STUB_OUT="$SB/omarchy-path.seen" \
+  PREFIX="$SB/prefix" SKEL="$SB/skel" ETC="$SB/etc" ENVIRONMENT_D="$SB/envd" \
+  bash "$REPO/scripts/install-theme.sh" --local >/dev/null 2>&1
+
+seen="$(cat "$SB/omarchy-path.seen" 2>/dev/null || echo '<not called>')"
+case "$seen" in
+"<unset>" | "<not called>")
+  fail "omarchy-theme-set was given OMARCHY_PATH=$seen -- it would report 'theme does not exist'"
+  ;;
+*)
+  pass "omarchy-theme-set is given OMARCHY_PATH even when the environment lacks it ($seen)"
+  ;;
+esac
+rm -f "$SB/shim/omarchy-theme-set"
+
+# ===========================================================================
 section "run under sudo (the case that installs into /root by accident)"
 # ===========================================================================
 #

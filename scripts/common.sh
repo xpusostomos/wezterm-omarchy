@@ -273,10 +273,19 @@ regenerate_theme() {
   fi
 
   say "regenerating theme '$name' so WezTerm picks up the colours now"
+
+  # omarchy-theme-set resolves the theme directory from $OMARCHY_PATH, and
+  # omarchy-theme-set-templates does the same for its templates. We cannot rely
+  # on inheriting it: sudo resets the environment, so a run under sudo -- or the
+  # per-user stage it spawns with `sudo -u` -- would look in /themes, find
+  # nothing, and report "Theme '<name>' does not exist" for whatever theme
+  # happens to be current. Pass it explicitly.
+  #
   # OMARCHY_THEME_SKIP_BACKGROUND: a normal theme-set rotates to the next
   # wallpaper, and that would be a surprising side effect of installing a
   # terminal config. This flag regenerates the theme files without moving it.
-  run env OMARCHY_THEME_SKIP_BACKGROUND=1 omarchy-theme-set "$name"
+  run env "OMARCHY_PATH=${OMARCHY_PATH:-$PREFIX}" OMARCHY_THEME_SKIP_BACKGROUND=1 \
+    omarchy-theme-set "$name"
   [[ $DRY_RUN == 1 ]] || note "generated: $(generated_theme_file)"
 }
 
