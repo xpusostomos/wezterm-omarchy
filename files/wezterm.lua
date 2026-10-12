@@ -26,7 +26,18 @@ local theme_file = home .. "/.local/state/omarchy/current/theme/wezterm.lua"
 
 local theme_ok, theme_colors = pcall(dofile, theme_file)
 if theme_ok and type(theme_colors) == "table" then
+  -- The generated file carries the tab bar and titlebar frame alongside the
+  -- palette, because they all come from the same theme. WezTerm wants them in
+  -- separate settings, and rejects an unknown key *inside* colors -- with a
+  -- window_frame in there it refuses the whole palette -- so lift it out first.
+  local frame = theme_colors.window_frame
+  theme_colors.window_frame = nil
+
   config.colors = theme_colors
+
+  if type(frame) == "table" then
+    config.window_frame = frame
+  end
 
   if wezterm.add_to_config_reload_watch_list then
     -- Take the generated file under WezTerm's file watcher, so a theme change

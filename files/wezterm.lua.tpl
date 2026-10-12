@@ -37,4 +37,67 @@ return {
     "{{ color14 }}",
     "{{ color15 }}",
   },
+
+  -- Tab bar, for anyone who keeps WezTerm's tabs. Omarchy's own terminals have
+  -- no tab bar, so there is no house style to copy; this simply extends the theme
+  -- to it.
+  --
+  -- The active tab takes the terminal's own background and foreground, so it
+  -- reads as part of the window rather than a strip stuck on top, and the bar
+  -- behind it uses the darkest of the theme's background shades to sit apart
+  -- from the terminal.
+  --
+  -- Dimmed text uses dark_foreground, the theme's own "recessive foreground"
+  -- role -- not `muted`, which some themes set to a colour barely distinguishable
+  -- from these shades (rose-pine's muted is #cecacd against a #e1dbd5 bar), and
+  -- not a hardcoded fade, so it stays legible in both light and dark themes.
+  --
+  -- Unused when the tab bar is hidden.
+  tab_bar = {
+    background = "{{ dark_background }}",
+
+    -- The active tab is the terminal itself: same background, same foreground.
+    active_tab = {
+      bg_color = "{{ background }}",
+      fg_color = "{{ foreground }}",
+      intensity = "Bold",
+    },
+    inactive_tab = {
+      bg_color = "{{ darker_background }}",
+      fg_color = "{{ dark_foreground }}",
+    },
+    -- Hover previews the active look.
+    inactive_tab_hover = {
+      bg_color = "{{ background }}",
+      fg_color = "{{ foreground }}",
+    },
+    new_tab = {
+      bg_color = "{{ background }}",
+      fg_color = "{{ foreground }}",
+    },
+    new_tab_hover = {
+      bg_color = "{{ darker_background }}",
+      fg_color = "{{ dark_foreground }}",
+    },
+  },
+
+  -- The fancy tab bar (the default in WezTerm builds this recent) paints the
+  -- strip around the tabs from window_frame rather than tab_bar, so both are
+  -- needed or the bar ends up half themed.
+  window_frame = {
+    active_titlebar_bg = "{{ dark_background }}",
+    inactive_titlebar_bg = "{{ dark_background }}",
+    active_titlebar_fg = "{{ foreground }}",
+    inactive_titlebar_fg = "{{ muted }}",
+    active_titlebar_border_bottom = "{{ accent }}",
+    inactive_titlebar_border_bottom = "{{ dark_background }}",
+    button_fg = "{{ muted }}",
+    button_bg = "{{ dark_background }}",
+    button_hover_fg = "{{ background }}",
+    button_hover_bg = "{{ foreground }}",
+    border_left_color = "{{ dark_background }}",
+    border_right_color = "{{ dark_background }}",
+    border_top_color = "{{ dark_background }}",
+    border_bottom_color = "{{ dark_background }}",
+  },
 }

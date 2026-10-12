@@ -122,6 +122,17 @@ LUA
     pass "no 'could not load theme' errors"
   fi
 
+  # A single unrecognised key makes WezTerm reject the whole config, not just
+  # that key -- a window_frame inside colors broke the entire palette, and the
+  # only symptom was this error on every launch. Worth catching here rather than
+  # in a window that silently loses its theme.
+  if grep -qiE 'error converting|is not a valid|stack traceback' <<<"$out"; then
+    fail "WezTerm rejected the config"
+    grep -iE 'error converting|is not a valid|Did you mean' <<<"$out" | head -3 | sed 's/^/       /'
+  else
+    pass "WezTerm accepted the config, no conversion errors"
+  fi
+
   # --- the screensaver and the default terminal have to agree -------------
   #
   # Omarchy's screensaver only runs in a hardcoded list of host terminals, in a
