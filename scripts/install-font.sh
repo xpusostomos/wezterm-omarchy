@@ -25,7 +25,7 @@ if [[ $SCOPE == local ]]; then
     # Skipping it was why editing the config and running this target appeared to
     # do nothing: the hook was already identical, and the config was never
     # touched.
-    install_wezterm_config "$(user_wezterm_dir)/wezterm.lua"
+    install_theme_module "$(user_wezterm_dir)/wezterm.lua"
   fi
 
   install_file "$hook_src" "$HOME/.config/omarchy/hooks/font-set.d/wezterm" 755
@@ -38,7 +38,7 @@ else
   # install-global-config. Refresh it here as well, so a font-side change to
   # wezterm.lua is pushed by this target rather than needing install-all-global.
   if [[ -f $ETC/wezterm/wezterm.lua ]]; then
-    install_wezterm_config "$ETC/wezterm/wezterm.lua"
+    install_global_theme
   fi
 
   install_file "$hook_src" "$SKEL/.config/omarchy/hooks/font-set.d/wezterm" 755

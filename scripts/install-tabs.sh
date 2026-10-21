@@ -20,7 +20,7 @@ if [[ $SCOPE == local ]]; then
 
   # The config loads the add-on, so it has to be installed for this to do
   # anything -- otherwise the module sits there unread.
-  install_wezterm_config "$(user_wezterm_dir)/wezterm.lua"
+  install_theme_module "$(user_wezterm_dir)/wezterm.lua"
   install_file "$addon" "$(user_wezterm_dir)/omarchy-tabs-hidden.lua"
   note "wezterm.lua picks this up on reload; undo with 'make uninstall-tabs-local'"
 else
@@ -33,7 +33,7 @@ else
     warn "$ETC/wezterm/wezterm.lua is not installed, so nothing will read this"
     warn "run 'make install-global-config' first, or use the local target"
   else
-    install_wezterm_config "$ETC/wezterm/wezterm.lua"
+    install_global_theme
   fi
 
   install_file "$addon" "$ETC/wezterm/omarchy-tabs-hidden.lua"

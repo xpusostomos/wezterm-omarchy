@@ -104,6 +104,11 @@ real_files=(
   "$REAL_HOME/.config/xdg-terminals.list"
   "$REAL_HOME/.local/share/applications/org.wezfurlong.wezterm.desktop"
   "$REAL_HOME/.config/omarchy/hooks/theme-set.d/wezterm"
+  # Nothing here should ever touch Omarchy's own state. Listed because the
+  # regeneration test feeds the installer a theme name, and this is the file
+  # that name comes from -- if anything wrote the real one, that is the file it
+  # would be, and it must be caught rather than discovered later.
+  "$REAL_HOME/.local/state/omarchy/current/theme.name"
 )
 real_state() {
   local p
@@ -152,21 +157,40 @@ run uninstall.sh --local >/dev/null 2>&1
 [[ -e $SB/home/.config/wezterm/omarchy-tabs-hidden.lua ]] \
   && fail "tab-bar add-on not removed" || pass "tab-bar add-on removed"
 
+# A config with no config object has nowhere to insert the load line, and this
+# refuses rather than wrapping their return -- wrapping would bury their settings
+# inside the call's argument, where they could not add or reorder anything.
+weird="$SB/home/.config/wezterm/wezterm.lua"
+printf 'local wezterm = require("wezterm")\nreturn wezterm.config_builder() -- no object to extend\n' >"$weird"
+cp "$weird" "$SB/weird-original"   # copied after writing, or it saves the wrong thing
+run install-theme.sh --local >/dev/null 2>&1 \
+  && pass "install-theme survives a config it cannot edit" \
+  || fail "install-theme died on a config it cannot edit"
+cmp -s "$weird" "$SB/weird-original" \
+  && pass "that config was left byte-for-byte alone" \
+  || fail "that config was modified"
+grep -q 'does not create a config object' <(run install-theme.sh --local 2>&1) \
+  && pass "and it says why" || fail "no explanation given"
+cp "$SB/weird-original" "$weird"
+
 # The font target has to install the config, because the font lives in it. It
 # used to install only the hook, so editing wezterm.lua and running it did
 # nothing whatsoever.
 run install-all.sh --local >/dev/null 2>&1
-printf -- '-- managed by wezterm-omarchy\nlocal w=require("wezterm")\nreturn w.config_builder() -- STALE\n' \
+# A stale module, in the ordinary config-object shape -- the shape the inserter
+# handles. Deliberately not `return w.config_builder()`: that has no object to
+# insert after and is refused, which is a separate case tested further down.
+printf -- 'local w=require("wezterm")\nlocal c=w.config_builder()\nc.font_size=1.0 -- STALE\nreturn c\n' \
   >"$SB/home/.config/wezterm/wezterm.lua"
 run install-font.sh --local >/dev/null 2>&1
-cmp -s "$REPO/files/wezterm.lua" "$SB/home/.config/wezterm/wezterm.lua" \
-  && pass "install-font-local installs wezterm.lua, not just the hook" \
-  || fail "install-font-local left a stale config in place"
+cmp -s "$REPO/files/wezterm-theme.lua" "$SB/home/.config/wezterm/wezterm-theme.lua" \
+  && pass "install-font-local wires up the theme, not just the hook" \
+  || fail "install-font-local left the theme module stale"
 
 run install-tabs.sh --local >/dev/null 2>&1
-cmp -s "$REPO/files/wezterm.lua" "$SB/home/.config/wezterm/wezterm.lua" \
-  && pass "install-tabs-local installs the config too" \
-  || fail "install-tabs-local left a stale config in place"
+cmp -s "$REPO/files/wezterm-theme.lua" "$SB/home/.config/wezterm/wezterm-theme.lua" \
+  && pass "install-tabs-local wires up the theme too" \
+  || fail "install-tabs-local left the theme module stale"
 
 # The desktop entry is what lets xdg-terminal-exec pass --app-id through, which
 # is what gives Omarchy's TUI launchers (the package installer, btop, disk
@@ -229,23 +253,45 @@ fi
 # ===========================================================================
 section "a config we did not write"
 # ===========================================================================
+#
+# The guarantee this section exists for: the user's config is never replaced.
+# The theme goes in its own module and the installer adds one line to their
+# file, so their settings and their formatting survive untouched -- no FORCE, no
+# backup-and-clobber.
 
 write_user_config
-if run install-theme.sh --local >/dev/null 2>&1; then
-  fail "install-theme overwrote a hand-written config without FORCE"
-else
-  pass "refuses to replace a hand-written config (exit non-zero)"
-fi
-user_config_intact && pass "that config is still intact" || fail "that config was damaged"
+cp "$user_config" "$SB/original-config"
+before_config="$(sha256sum <"$user_config")"
 
-FORCE=1 run install-theme.sh --local >/dev/null 2>&1 || fail "FORCE=1 install failed"
-grep -q 'managed by wezterm-omarchy' "$user_config" \
-  && pass "FORCE=1 replaced it with ours" || fail "FORCE=1 did not install"
-grep -lq 'MINE' "$SB/home/.config/wezterm/"*.bak.* 2>/dev/null \
-  && pass "the original was kept as a .bak" || fail "no backup of the original"
+run install-theme.sh --local >/dev/null 2>&1 || fail "install-theme exited non-zero"
+user_config_intact && pass "their settings are still there" || fail "their settings were lost"
+
+grep -q 'wezterm-omarchy: load the Omarchy theme' "$user_config" \
+  && pass "the theme load line was added" || fail "no theme load line added"
+[[ -f $SB/home/.config/wezterm/wezterm-theme.lua ]] \
+  && pass "the theme module was installed" || fail "theme module missing"
+
+# Their bytes are all still there. Two lines are added -- the marker comment and
+# the call that loads the theme -- and their `return` is not among the things
+# that changed.
+grep -q 'c.font_size=33.0 -- MINE' "$user_config" \
+  && pass "their settings line is untouched" || fail "their settings were altered"
+[[ $(wc -l <"$user_config") -eq $(( $(wc -l <"$SB/original-config") + 2 )) ]] \
+  && pass "exactly two lines added (comment + load call)" \
+  || fail "unexpected line count ($(wc -l <"$user_config") vs $(wc -l <"$SB/original-config"))"
+grep -q '^return c$' "$user_config" \
+  && pass "their return statement is untouched" || fail "their return was rewritten"
+
+run install-theme.sh --local >/dev/null 2>&1
+[[ $(grep -c 'wezterm-omarchy: load the Omarchy theme' "$user_config") -eq 1 ]] \
+  && pass "re-running does not add the line twice" || fail "the load line was duplicated"
 
 run uninstall.sh --local >/dev/null 2>&1
-user_config_intact && pass "uninstall restored the original" || fail "uninstall did not restore it"
+[[ "$before_config" == "$(sha256sum <"$user_config")" ]] \
+  && pass "uninstall restores their config byte-identical" \
+  || { fail "their config was not restored exactly"; diff <(cat "$user_config") /dev/null 2>/dev/null; }
+[[ -e $SB/home/.config/wezterm/wezterm-theme.lua ]] \
+  && fail "theme module left behind" || pass "theme module removed"
 
 # ===========================================================================
 section "global install"
@@ -351,32 +397,33 @@ section "theme regeneration must not depend on inheriting OMARCHY_PATH"
 # theme being broken. Stub the command and check what we hand it with
 # OMARCHY_PATH absent from the environment.
 
-cat >"$SB/shim/omarchy-theme-set" <<'STUB'
-#!/bin/bash
-printf '%s\n' "${OMARCHY_PATH:-<unset>}" >"$STUB_OUT"
-STUB
-chmod +x "$SB/shim/omarchy-theme-set"
-
+# Run under DRY_RUN and read the command it would issue. Nothing is executed, so
+# this cannot invoke the real omarchy-theme-set -- which, for real, re-applies the
+# theme and runs all of Omarchy's post-theme hooks (restarting terminals,
+# reloading Hyprctl) against the live session. An earlier version of this test
+# put a stub on PATH and relied on it shadowing the real command; had the stub
+# ever gone missing, the suite would have done exactly that to the running
+# desktop. Asserting on the printed command needs no stub at all.
 regen_home="$SB/regenhome"
 rm -rf "$regen_home"
 mkdir -p "$regen_home/.local/state/omarchy/current"
-echo "tokyo-night" >"$regen_home/.local/state/omarchy/current/theme.name"
 
-env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u OMARCHY_PATH \
-  PATH="$SB/shim:$PATH" HOME="$regen_home" REPO="$REPO" STUB_OUT="$SB/omarchy-path.seen" \
+# Input for the code under test, and deliberately not a real theme name: this
+# project has no business naming a theme, and a real one here reads as a
+# preference.
+echo "example-theme" >"$regen_home/.local/state/omarchy/current/theme.name"
+
+out="$(env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u OMARCHY_PATH \
+  HOME="$regen_home" REPO="$REPO" DRY_RUN=1 \
   PREFIX="$SB/prefix" SKEL="$SB/skel" ETC="$SB/etc" ENVIRONMENT_D="$SB/envd" \
-  bash "$REPO/scripts/install-theme.sh" --local >/dev/null 2>&1
+  bash "$REPO/scripts/install-theme.sh" --local 2>&1)"
 
-seen="$(cat "$SB/omarchy-path.seen" 2>/dev/null || echo '<not called>')"
-case "$seen" in
-"<unset>" | "<not called>")
-  fail "omarchy-theme-set was given OMARCHY_PATH=$seen -- it would report 'theme does not exist'"
-  ;;
-*)
-  pass "omarchy-theme-set is given OMARCHY_PATH even when the environment lacks it ($seen)"
-  ;;
-esac
-rm -f "$SB/shim/omarchy-theme-set"
+if grep -qE 'OMARCHY_PATH=[^ ]+ .*omarchy-theme-set' <<<"$out"; then
+  pass "the regeneration command passes OMARCHY_PATH explicitly"
+else
+  fail "no OMARCHY_PATH in the command we would run with it absent from the environment:"
+  grep -i 'omarchy-theme-set' <<<"$out" | head -2 | sed 's/^/       /'
+fi
 
 # ===========================================================================
 section "run under sudo (the case that installs into /root by accident)"

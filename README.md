@@ -53,25 +53,57 @@ case re-run `make install-all-global`.
 
 ### What it does to your config
 
-**It never edits your config in place.** There is no patching, no line injection,
-and no rewriting of settings you already have. Everything is whole-file: it either
-writes its own file or it leaves yours alone. That decides what "your config" does
-differently in the two modes:
+**Your `wezterm.lua` is yours, and is never replaced.** The theme lives in a
+separate file, `wezterm-theme.lua`, next to it, and the installer adds **one
+statement** to your config that loads it:
 
-| | local install | global install |
-|---|---|---|
-| `~/.config/wezterm/wezterm.lua` | **replaced** by ours | **left untouched** |
-| Your settings | kept only in a `.bak` copy | still apply — merged on top, and win |
-| How the theme reaches WezTerm | our config *is* your config | `/etc/wezterm/wezterm.lua` loads your config and merges it |
+```lua
+local wezterm = require("wezterm")
 
-So **local replaces, global augments.**
+local config = wezterm.config_builder()
 
-**Local** writes its own `~/.config/wezterm/wezterm.lua`. Because that would
-otherwise silently destroy a config you wrote, it refuses and tells you to re-run
-with `FORCE=1`; with that, your original is copied to `wezterm.lua.bak.<timestamp>`
-first. The one exception is the old install script's config, which is recognised
-by the bad theme path it reads and migrated automatically — backing it up and
-replacing it without needing `FORCE`.
+-- wezterm-omarchy: load the Omarchy theme
+dofile("/home/you/.config/wezterm/wezterm-theme.lua")(config)
+
+config.font_size = 77          -- yours, and it wins
+return config
+```
+
+Nothing else in your file changes — not your settings, not your comments, not
+your formatting. `make uninstall-local` takes those lines back out and restores
+the file byte for byte.
+
+**Where it goes, and why.** Immediately after the line that creates your config,
+so the theme is applied first and **everything you set below it overrides the
+theme** — colours, font, appearance, key bindings, anything.
+
+It cannot simply be appended to the end of the file: Lua requires `return` to be
+the last statement in a block, so anything after it is a syntax error.
+
+```
+$ printf 'return 1\nprint(2)\n' > x.lua && luac -p x.lua
+luac: x.lua:2: <eof> expected near 'print'
+```
+
+The installer rewrites nothing to work around that. It inserts two lines after
+your config is created and leaves the rest of the file alone, including your
+`return`.
+
+**If your config doesn't create one** — `return { ... }`, or
+`return wezterm.config_builder()` with no variable — there is nothing to insert
+after, and the installer **refuses and tells you why** rather than guessing. It
+will not wrap your `return`, because that would bury your settings inside the
+call's argument where you couldn't add or reorder anything. Give the config the
+usual shape, or add the `dofile(...)` line yourself wherever it suits you.
+
+**If you have no config at all**, one is created for you to edit, containing the
+same statement.
+
+**Global installs touch nobody's config.** `/etc/wezterm/wezterm.lua` is the
+entry point (`WEZTERM_CONFIG_FILE` points at it), and it loads the theme module
+then merges each user's own `~/.config/wezterm/wezterm.lua` over the top, so
+their settings win. Nothing per-user is written.
+
 
 **Global** writes `/etc/wezterm/wezterm.lua` and points `WEZTERM_CONFIG_FILE` at
 it. That file themes WezTerm and then loads your own

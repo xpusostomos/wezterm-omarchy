@@ -67,10 +67,15 @@ if [[ $SCOPE == local ]]; then
   # if there was one.
   restore_or_remove_file "$HOME/.config/xdg-terminals.list"
 
-  # Put back whatever was here before. If there was no prior config, this just
-  # removes ours. Done last so the generated colours go only once nothing still
-  # points at the config.
-  restore_or_remove_file "$(user_wezterm_dir)/wezterm.lua"
+  # Take our line back out of the user's config, and remove the theme module.
+  # Their config is left byte for byte as it was -- this is an edit, not a
+  # replacement, so there is nothing to "restore". Done last so the generated
+  # colours go only once nothing still points at the theme.
+  cfg="$(user_wezterm_dir)/wezterm.lua"
+  if [[ -f $cfg ]] && command -v python3 >/dev/null 2>&1; then
+    run python3 "$REPO/scripts/insert-theme-load.py" "$cfg" x --remove
+  fi
+  remove_file "$(user_wezterm_dir)/wezterm-theme.lua"
 
   # The colours Omarchy generated from our template. Left behind it would just
   # sit stale and unused, since nothing regenerates it once the template is gone.
@@ -87,6 +92,7 @@ else
   # at each step.
   remove_file "$ENVIRONMENT_D/99-wezterm-omarchy.conf"
   remove_file "$ETC/wezterm/wezterm.lua"
+  remove_file "$ETC/wezterm/wezterm-theme.lua"
 
   remove_file "$PREFIX/default/wezterm/screensaver.lua"
   remove_file "$PREFIX/default/themed/wezterm.lua.tpl"

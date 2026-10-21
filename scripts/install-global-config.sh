@@ -29,7 +29,7 @@ say "installing the system-wide WezTerm config"
 # file it names is missing, WezTerm errors and loads *no* config at all rather
 # than falling back. So the config is installed before anything points at it.
 # uninstall-global removes them in the reverse order for the same reason.
-install_file "$FILES/wezterm.lua" "$config_dst"
+install_global_theme
 
 # Generated rather than copied so the real path is baked in even when ETC is
 # overridden for testing.

@@ -156,20 +156,29 @@ LUA
     fi
   fi
 
-  # --- is the installed config actually the one in this repo? -------------
+  # --- is the theme wired up, and current? --------------------------------
   #
-  # Editing files/wezterm.lua and then running a target that does not install it
-  # leaves the old config in place and nothing says so -- the edit just appears
-  # to do nothing. Only checked when the installed file is ours: the file invites
-  # you to edit it in place, and then a difference is expected, not a fault.
-  if is_managed "$config_file"; then
-    if cmp -s "$REPO/files/wezterm.lua" "$config_file"; then
-      pass "installed config matches files/wezterm.lua"
+  # The theme now lives in its own module and the user's config loads it, so the
+  # things to check are that the module matches the repo and that the config
+  # still carries the line that loads it. Editing files/wezterm-theme.lua and
+  # running a target that does not install it would otherwise fail silently.
+  module="$(dirname -- "$config_file")/wezterm-theme.lua"
+  if [[ -f $module ]]; then
+    if cmp -s "$REPO/files/wezterm-theme.lua" "$module"; then
+      pass "theme module matches files/wezterm-theme.lua"
     else
-      warn "the installed config differs from $REPO/files/wezterm.lua"
-      note "if you edited the installed copy, that is expected and fine"
-      note "if you edited the repo copy, install it with: make install-theme-local"
+      warn "the installed theme module differs from $REPO/files/wezterm-theme.lua"
+      note "install it with: make install-theme-local"
     fi
+  else
+    fail "no theme module at $module -- the theme is not wired up"
+  fi
+
+  if grep -q 'wezterm-omarchy: load the Omarchy theme' "$config_file"; then
+    pass "your config loads the theme"
+  else
+    warn "your config does not load the theme"
+    note "add it with: make install-theme-local"
   fi
 
   # --- the recursion guard ----------------------------------------------

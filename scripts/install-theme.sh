@@ -29,14 +29,16 @@ if [[ $SCOPE == local ]]; then
     # reload hook, which the system config cannot provide, is installed.
     say "installing the theme reload hook only (user)"
   else
-    say "installing the WezTerm theme template and config (user)"
+    say "installing the WezTerm theme (user)"
 
     INSTALL_CHANGED=0
     # Omarchy reads user templates from ~/.config/omarchy/themed, and checks them
     # before the built-in ones. Like all per-user config, this survives Omarchy
     # updates, unlike anything written under /usr/share/omarchy.
     install_file "$template_src" "$HOME/.config/omarchy/themed/wezterm.lua.tpl"
-    install_wezterm_config "$(user_wezterm_dir)/wezterm.lua"
+    # The theme module, and the one line in the user's config that loads it.
+    # Their config is never replaced: it keeps its settings and gains that line.
+    install_theme_module "$(user_wezterm_dir)/wezterm.lua"
     theme_sources_changed=$INSTALL_CHANGED
   fi
 
@@ -61,9 +63,9 @@ else
   INSTALL_CHANGED=0
   install_file "$template_src" "$PREFIX/default/themed/wezterm.lua.tpl"
 
-  # Ship the config as an Omarchy user-config source too, so
-  # `omarchy refresh-config wezterm/wezterm.lua` can restore it.
-  install_file "$FILES/wezterm.lua" "$PREFIX/config/wezterm/wezterm.lua"
+  # Ship the theme module as an Omarchy user-config source too, so
+  # `omarchy refresh-config wezterm/wezterm-theme.lua` can restore it.
+  install_file "$FILES/wezterm-theme.lua" "$PREFIX/config/wezterm/wezterm-theme.lua"
 
   # Generate this user's colours now rather than at the next theme change, so the
   # install has a visible effect without waiting for one.

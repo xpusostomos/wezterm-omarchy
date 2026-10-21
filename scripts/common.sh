@@ -303,35 +303,100 @@ regenerate_theme_if_needed() {
   fi
 }
 
-# The old install script's config is recognisable by the path it reads, which is
-# the bug: Omarchy writes generated themes to ~/.local/state, never to
-# ~/.config/omarchy/current. Identifying it lets us migrate it rather than making
-# the user pass FORCE=1 to replace a config we can tell is broken.
-is_old_script_config() {
-  local target="$1"
-  [[ -f $target ]] || return 1
-  is_managed "$target" && return 1
-  grep -qF '/.config/omarchy/current/theme/wezterm.lua' "$target"
+# Write a starter config, for when there is none at all. Never replaces an
+# existing one -- that is the whole point of the module scheme.
+create_minimal_config() { # $1 = config path
+  local dst="$1" dir tmp
+  dir="$(dirname -- "$dst")"
+  tmp="$(mktemp)"
+
+  cat >"$tmp" <<'EOF'
+-- managed by wezterm-omarchy
+-- Your WezTerm configuration.
+--
+-- This file is yours. The theme is applied by the two lines below, which the
+-- installer put here; everything after them is yours to edit and will override
+-- the theme. Deleting those lines simply means WezTerm stops following the
+-- theme -- nothing breaks.
+local wezterm = require("wezterm")
+
+local config = wezterm.config_builder()
+
+return config
+EOF
+
+  run_priv mkdir -p -- "$dir"
+  run_priv install -Dm644 -- "$tmp" "$dst"
+  rm -f -- "$tmp"
+  note "created a starter config at $dst"
 }
 
-# Install the WezTerm config itself, with the old-script migration applied.
+# Point a user's config at the theme module, by wrapping its return.
 #
-# wezterm.lua is a shared dependency: the font lives in it, so does the
-# appearance, so does the list of modules loaded. A feature target that installed
-# only its own extra files would appear to do nothing whenever the config had
-# changed -- which is exactly what happened with the font. So every target whose
-# feature depends on the config installs it.
-install_wezterm_config() { # $1 = destination
-  local dst="$1" replace=""
+# Lua requires `return` to be the last statement in a block, so this cannot be
+# appended to the end of the file -- anything after the return is a syntax error.
+# The generated line goes immediately before it instead. Their settings are left
+# exactly as they were; only that one line is added, and uninstall takes it back
+# out byte for byte.
+ensure_theme_loaded() { # $1 = config, $2 = theme module
+  local config="$1" module="$2"
 
-  if is_old_script_config "$dst"; then
-    warn "the existing $dst is the old install script's config"
-    note "it reads a theme path Omarchy never writes, which is why WezTerm was not themed"
-    note "replacing it; the original is kept as a .bak copy"
-    replace=replace
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found, so $config was not pointed at the theme"
+    warn "add this line yourself, just before its 'return':"
+    warn "    return dofile(\"$module\")(config)"
+    return 0
   fi
 
-  install_file "$FILES/wezterm.lua" "$dst" 644 "$replace"
+  if ! run python3 "$REPO/scripts/insert-theme-load.py" "$config" "$module"; then
+    # The config exists but has no config object to insert after -- a shape this
+    # will not guess at. The theme module is installed either way, so the target
+    # carries on and leaves the user a clear instruction rather than dying
+    # partway through installing something else.
+    warn "$config was left alone: it does not create a config object"
+    warn "add this yourself, wherever it suits you:"
+    warn "    dofile(\"$module\")(config)"
+  fi
+}
+
+# The theme itself, plus the line that loads it.
+#
+# The theme lives in its own module so that a user's wezterm.lua is never
+# replaced: it keeps its settings and gains one line. Every feature target that
+# depends on the theme calls this, so whichever one you run leaves the theme
+# wired up.
+install_theme_module() { # $1 = path to the config that should load it
+  local config="$1" module
+  module="$(dirname -- "$config")/wezterm-theme.lua"
+
+  install_file "$FILES/wezterm-theme.lua" "$module"
+
+  if [[ ! -e $config ]]; then
+    create_minimal_config "$config"
+  fi
+
+  ensure_theme_loaded "$config" "$module"
+}
+
+# System-wide: the entry point, plus the theme module beside it.
+#
+# Nothing is edited here. A system-wide install does not touch anyone's own
+# config -- the entry point is ours and is what WezTerm loads instead, so there
+# is no line to insert. The module has to sit beside it because the entry point
+# loads it by path.
+install_global_theme() {
+  local module="$ETC/wezterm/wezterm-theme.lua" tmp_dir tmp
+
+  install_file "$FILES/wezterm-theme.lua" "$module"
+
+  # The entry point names the module by absolute path, substituted here: with
+  # `--config-file` pointing elsewhere, resolving it from wezterm.config_file
+  # would look in the wrong directory.
+  tmp_dir="$(mktemp -d)"
+  tmp="$tmp_dir/wezterm.lua"
+  sed "s|@@THEME_MODULE@@|$module|" "$FILES/wezterm-global.lua" >"$tmp"
+  install_file "$tmp" "$ETC/wezterm/wezterm.lua"
+  rm -rf -- "$tmp_dir"
 }
 
 # --- leftovers from the old gist installer -------------------------------
