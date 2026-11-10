@@ -82,7 +82,6 @@ awk '
   END {
     if (!allow) print "WEZTERM_OMARCHY_WARN=allow" > "/dev/stderr"
     if (!branch) print "WEZTERM_OMARCHY_WARN=branch" > "/dev/stderr"
-    if (!notify) print "WEZTERM_OMARCHY_WARN=notify" > "/dev/stderr"
   }
 ' "$launcher" >"$tmp" 2>"$tmp_dir/warnings"
 
@@ -91,13 +90,17 @@ awk '
 missing=""
 grep -qF '| *wezterm*) ;;' "$tmp" || missing="$missing allow-list"
 grep -qF '*wezterm*)' "$tmp" || missing="$missing branch"
-grep -qF 'Kitty, or WezTerm' "$tmp" || missing="$missing notification"
+# The notification text is optional: newer Omarchy reads it from i18n
+# (screensaver.terminalOnly) instead of hardcoding it, so there is nothing to edit.
+if grep -qF 'Screensaver only runs in' "$launcher"; then
+  grep -qF 'Kitty, or WezTerm' "$tmp" || missing="$missing notification"
+fi
 
 if [[ -n $missing ]]; then
   rm -rf -- "$tmp_dir"
   die "could not patch $launcher (failed:$missing).
     Its shape has probably changed since this script was written.
-    Compare it with the 'case $terminal in' blocks and update
+    Compare it with the 'case \$terminal in' blocks and update
     scripts/install-screensaver.sh accordingly."
 fi
 
