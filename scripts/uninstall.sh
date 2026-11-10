@@ -26,7 +26,7 @@ if [[ ${MENUS_ONLY:-0} == 1 ]]; then
   else
     say "removing the seeded menu row (system)"
     if command -v python3 >/dev/null 2>&1; then
-      run python3 "$REPO/scripts/merge-menu-jsonc.py" \
+      run_root python3 "$REPO/scripts/merge-menu-jsonc.py" \
         "$SKEL/.config/omarchy/extensions/omarchy-menu.jsonc" x --remove
     fi
   fi
@@ -102,7 +102,7 @@ else
 
   # The menu row seeded into the skeleton.
   if command -v python3 >/dev/null 2>&1; then
-    run python3 "$REPO/scripts/merge-menu-jsonc.py" \
+    run_root python3 "$REPO/scripts/merge-menu-jsonc.py" \
       "$SKEL/.config/omarchy/extensions/omarchy-menu.jsonc" x --remove
   fi
 

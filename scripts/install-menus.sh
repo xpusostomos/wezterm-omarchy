@@ -35,8 +35,9 @@ merger="$REPO/scripts/merge-menu-jsonc.py"
 # One row, merged into whichever menu-extensions file applies. Refuses to write
 # a file that no longer parses, since the shell watches and parses this at
 # startup -- a bad merge would take the whole menu with it.
-merge_menu_row() { # $1 = menu extensions file, $2 = action
-  local menu_file="$1" action="$2"
+merge_menu_row() { # $1 = menu extensions file, $2 = action, $3 = "root" to write as root
+  local menu_file="$1" action="$2" runner=run
+  [[ ${3:-} == root ]] && runner=run_root
 
   if ! command -v python3 >/dev/null 2>&1; then
     warn "python3 not found, so the menu row was skipped"
@@ -45,7 +46,7 @@ merge_menu_row() { # $1 = menu extensions file, $2 = action
     return 0
   fi
 
-  run python3 "$merger" "$menu_file" "$action"
+  "$runner" python3 "$merger" "$menu_file" "$action"
   note "menu row merged into: $menu_file"
 }
 
@@ -138,7 +139,7 @@ else
 
   # For new accounts the canonical action works, because the script above is
   # patched -- so the skeleton row needs no helper of its own.
-  merge_menu_row "$SKEL/.config/omarchy/extensions/omarchy-menu.jsonc" "omarchy-default-terminal wezterm"
+  merge_menu_row "$SKEL/.config/omarchy/extensions/omarchy-menu.jsonc" "omarchy-default-terminal wezterm" root
 
   warn "the patched scripts are owned by the Omarchy package; an update may revert"
   warn "them, in which case re-run this target"
